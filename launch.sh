@@ -2,7 +2,8 @@
 # One command: your own QM at https://<label>.orgo.dev on a dedicated Orgo computer.
 #
 #   export ORGO_API_KEY=sk_live_...        # orgo.ai > Settings > API keys
-#   bash launch.sh acme-qm                 # -> https://acme-qm.orgo.dev
+#   bash launch.sh acme-qm                 # -> https://acme-qm.orgo.dev (or acme-qm-xxxx if taken)
+#   bash launch.sh                         # -> https://qm-xxxx.orgo.dev
 #
 # Options (env):
 #   QM_TEMPLATE      template ref        (default: default/qm@0.1.7, i.e. published to your account;
@@ -13,8 +14,10 @@
 # Needs: bash, curl, python3. Your key stays on your machine; it is never sent to the computer.
 set -euo pipefail
 
-label="${1:-}"
+rand4() { python3 -c 'import secrets;print(secrets.token_hex(2))'; }
+label="${1:-qm-$(rand4)}"   # no name given -> qm-xxxx
 [[ "$label" =~ ^[a-z0-9][a-z0-9-]{1,40}[a-z0-9]$ ]] || { echo "usage: ORGO_API_KEY=... $0 <label>   (lowercase letters, digits, dashes)"; exit 1; }
+cname="qm-${label#qm-}"   # computer name
 : "${ORGO_API_KEY:?set ORGO_API_KEY (orgo.ai > Settings > API keys)}"
 API=https://www.orgo.ai/api
 TEMPLATE="${QM_TEMPLATE:-default/qm@0.1.7}"
@@ -37,13 +40,22 @@ ws="${ORGO_WORKSPACE:-$(api GET /workspaces | json 'd["workspaces"][0]["id"]')}"
 echo "→ workspace $ws"
 
 body=$(python3 -c 'import json,sys
-b={"workspace_id":sys.argv[1],"name":"qm-"+sys.argv[2],"template_ref":sys.argv[3]}
+b={"workspace_id":sys.argv[1],"name":sys.argv[2],"template_ref":sys.argv[3]}
 if sys.argv[4]: b["ends_in_hours"]=int(sys.argv[4])
-print(json.dumps(b))' "$ws" "$label" "$TEMPLATE" "${ENDS_IN_HOURS:-}")
+print(json.dumps(b))' "$ws" "$cname" "$TEMPLATE" "${ENDS_IN_HOURS:-}")
 cid=$(api POST /computers "$body" | json 'd["id"]')
-echo "→ computer qm-$label ($cid) launched from $TEMPLATE"
+echo "→ computer $cname ($cid) launched from $TEMPLATE"
 
-url=$(api POST "/computers/$cid/public-urls" "{\"port\":18081,\"label\":\"$label\"}" | json 'd.get("url") or "https://"+(d.get("hostname") or d.get("domain"))')
+# orgo.dev names are global across Orgo accounts. If the name is taken, add a short random
+# suffix and try again (acme-qm -> acme-qm-7f3a).
+url=""
+for try in "$label" "$label-$(rand4)" "$label-$(rand4)"; do
+  if out=$(api POST "/computers/$cid/public-urls" "{\"port\":18081,\"label\":\"$try\"}"); then
+    url=$(printf '%s' "$out" | json 'd.get("url") or "https://"+(d.get("hostname") or d.get("domain"))'); break
+  fi
+  echo "→ $try.orgo.dev unavailable; trying another name"
+done
+[ -n "$url" ] || { echo "Couldn't get an orgo.dev URL (each account gets 10 free names). The computer ($cid) is running; free a name or delete it in the dashboard."; exit 1; }
 echo "→ public URL $url → port 18081"
 
 echo -n "→ starting QM (first launch pulls images, ~3 min) "
@@ -68,5 +80,5 @@ Next:
   1. Admin > Onboarding: add a model key (Anthropic, OpenAI or OpenRouter).
   2. For teammates, run 'qm-email' in the computer's QM terminal (Resend).
   New admin link anytime: 'qm-open' in that terminal.
-  Desktop: https://www.orgo.ai/desktops (computer qm-$label)
+  Desktop: https://www.orgo.ai/desktops (computer $cname)
 EOF

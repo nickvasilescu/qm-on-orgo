@@ -13,6 +13,8 @@ export ORGO_API_KEY=sk_live_...     # orgo.ai → Settings → API keys
 bash launch.sh acme-qm               # → https://acme-qm.orgo.dev
 ```
 
+Every user picks their own name. `.orgo.dev` names are shared across all Orgo accounts, so if yours is taken the script adds a short suffix (`acme-qm-7f3a`); run it with no name to get `qm-xxxx`. Each account gets 10 free names.
+
 It needs `bash`, `curl` and `python3`. Your API key stays on your machine and is never copied to the computer. It takes about 4 minutes.
 
 ## Quick start (manual)
