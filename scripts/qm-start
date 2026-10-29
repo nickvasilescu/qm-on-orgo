@@ -1,0 +1,69 @@
+#!/bin/bash
+# Bring QM up on this computer. Runs on every launch (via qm-watch) and after qm-public / qm-email.
+# Idempotent and locked, so overlapping triggers are harmless.
+set -uo pipefail
+. /usr/local/bin/qm-env
+# Background children are started with 9>&- so a long-lived process (dockerd, Chrome) never
+# inherits fd 9 and holds this lock forever.
+exec 9>/run/qm-start.v2.lock
+flock -n 9 || { echo "qm-start already running"; exit 0; }
+exec > >(tee -a /var/log/qm-start.log 9>&-) 2>&1
+echo "== qm-start $(date -Is)"
+cd /opt/qm
+pgrep -x dockerd >/dev/null || { setsid /usr/local/bin/orgo-dockerd >/var/log/dockerd.log 2>&1 < /dev/null 9>&- & }
+qm_wait_docker || { echo "docker did not start"; exit 1; }
+
+[ -f /opt/qm/.instance-secrets ] || { qm_secrets && touch /opt/qm/.instance-secrets; }
+/usr/local/bin/qm-configure || { echo "qm-configure failed; fix the setting above and rerun qm-start"; exit 1; }
+
+# Firewall: QM's ports never face the network directly. In public-URL mode, Orgo's edge
+# may reach the portal (18081) only; core, web UI and admin stay closed.
+ext=$(ip -o -4 route show default | awk '{print $5}' | head -1)
+if [ -n "$ext" ]; then
+  iptables -C DOCKER-USER -i "$ext" -p tcp -m conntrack --ctorigdstport 18080:18089 -j DROP 2>/dev/null \
+    || iptables -I DOCKER-USER -i "$ext" -p tcp -m conntrack --ctorigdstport 18080:18089 -j DROP
+  allow=(-i "$ext" -p tcp -m conntrack --ctorigdstport 18081 -j RETURN)
+  if [[ "$(qm_public_url)" == https://* ]]; then
+    iptables -C DOCKER-USER "${allow[@]}" 2>/dev/null || iptables -I DOCKER-USER 1 "${allow[@]}"
+  else
+    while iptables -D DOCKER-USER "${allow[@]}" 2>/dev/null; do :; done
+  fi
+fi
+
+ok=0
+for attempt in 1 2 3; do
+  if npm exec qm -- up; then ok=1; break; fi
+  echo "qm up attempt $attempt failed; retrying"; sleep 15
+done
+if [ "$ok" != 1 ]; then
+  # `up` can fail only on its final deployment-layer sync while every service is healthy.
+  if curl -fs -o /dev/null http://localhost:18080/healthz && qm_http_up http://localhost:18081/; then
+    echo "WARN: qm up reported an error but core and portal are healthy; continuing"
+  else
+    echo "QM failed to start; see above and: cd /opt/qm && npm exec qm -- logs core"; exit 1
+  fi
+fi
+
+# QM 0.1.15 bug: core reads QM_CORE_CONTAINER into the AWS sandbox config instead of the local
+# one, so it dials 127.0.0.1:<port> inside its own container and every sandbox command is
+# refused. Patch core in place (re-applied whenever `qm up` recreates it); no-op once fixed upstream.
+patch_core() {
+  local c=qm-orgo-core f=/app/src/config.ts
+  docker exec "$c" grep -q 'qm-on-orgo patch' "$f" 2>/dev/null && return 0
+  docker exec "$c" sed -n '/^function localSandboxEnv/,/^}/p' "$f" | grep -q QM_CORE_CONTAINER && return 0
+  docker exec -u root "$c" sed -i '/LOCAL_SANDBOX_DOCKER_BIN ? { dockerBin: env.LOCAL_SANDBOX_DOCKER_BIN }/a\    ...(env.QM_CORE_CONTAINER ? { coreContainer: env.QM_CORE_CONTAINER } : {}), // qm-on-orgo patch' "$f" || return 1
+  docker exec "$c" grep -q 'qm-on-orgo patch' "$f" || { echo "WARN: core layout changed; sandbox patch not applied"; return 1; }
+  # Sandboxes started by the unpatched core published a port instead of joining core's network.
+  for s in $(docker ps -aq --filter label=qm.sandbox=1); do
+    [ -n "$(docker port "$s" 2>/dev/null)" ] && docker rm -f "$s" >/dev/null
+  done
+  docker restart "$c" >/dev/null
+  for _ in $(seq 1 30); do curl -fs -o /dev/null http://localhost:18080/healthz && break; sleep 2; done
+  echo "patched core: sandboxes reach core over Docker's network"
+}
+patch_core || true
+
+echo "QM is up at $(qm_public_url)"
+# Open the admin sign-in in this computer's Chrome once, on the first launch. Later: qm-open.
+if [ ! -f /opt/qm/.opened ]; then /usr/local/bin/qm-open 9>&- && touch /opt/qm/.opened; fi
+echo "== qm-start done $(date -Is)"

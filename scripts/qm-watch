@@ -1,0 +1,13 @@
+#!/bin/bash
+# Launch trigger. A template launch restores a frozen memory snapshot, so this loop resumes
+# and sees the wall clock jump. That (once the bake has finished) means: start QM.
+# Also fires after a suspend/resume, which is harmless: qm-start is idempotent and locked.
+last=$(date +%s)
+while true; do
+  sleep 5
+  now=$(date +%s)
+  if [ $((now - last)) -gt 20 ] && [ -f /opt/qm/.baked ]; then
+    setsid /usr/local/bin/qm-start </dev/null >/dev/null 2>&1 &
+  fi
+  last=$now
+done

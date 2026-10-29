@@ -1,0 +1,30 @@
+# Sourced by the qm-* scripts.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Orgo sets XDG_RUNTIME_DIR to a directory that does not exist, which breaks Docker.
+unset XDG_RUNTIME_DIR
+
+qm_wait_docker() { for _ in $(seq 1 90); do docker info >/dev/null 2>&1 && return 0; sleep 2; done; return 1; }
+
+# Any HTTP status counts as up: the portal answers non-browser requests with 401.
+qm_http_up() { [ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$1")" != "000" ]; }
+
+qm_public_url() { python3 -c 'import json,re;t=open("/opt/qm/qm.config.jsonc").read();print(json.loads(re.sub(r"^\s*//.*$","",t,flags=re.M))["publicUrl"])' 2>/dev/null; }
+
+# Per-computer signing secrets: minted once on first start, never baked into the snapshot.
+qm_secrets() {
+  local jwk
+  jwk=$(node -e "const {generateKeyPairSync}=require('node:crypto');process.stdout.write(JSON.stringify(generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({format:'jwk'})))")
+  umask 077
+  cat > /opt/qm/.env <<EOF
+CAPABILITY_SECRET=$(openssl rand -hex 32)
+CONNECTOR_SECRET_KEY=$(openssl rand -hex 32)
+CORE_SIGNING_SECRET=$(openssl rand -hex 32)
+PORTAL_IDENTITY_SECRET=$(openssl rand -hex 32)
+SKILL_SIGNING_SECRET=$(openssl rand -hex 32)
+PORTAL_SESSION_SECRET=$(openssl rand -hex 32)
+AUTH_TOKEN_SECRET=$(openssl rand -hex 32)
+AUTH_CLIENT_SECRET=$(openssl rand -hex 32)
+AUTH_SIGNING_JWK=$jwk
+PUBLIC_API_URL=http://qm-orgo-core:8080
+EOF
+}

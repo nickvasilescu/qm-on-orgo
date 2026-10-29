@@ -1,0 +1,8 @@
+#!/bin/bash
+# Docker on Orgo: VMs boot without systemd or a mounted cgroup tree, so handle both here.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+unset XDG_RUNTIME_DIR
+[ -f /sys/fs/cgroup/cgroup.controllers ] || mount -t cgroup2 none /sys/fs/cgroup
+# If a dockerd is already running (e.g. started during the bake), just watch it.
+pgrep -x dockerd >/dev/null && exec tail -f /dev/null --pid="$(pgrep -xo dockerd)"
+exec /usr/bin/dockerd

@@ -1,0 +1,20 @@
+#!/bin/bash
+# Serve QM on a public https URL, or go back to the local test drive.
+#   qm-public https://acme-qm.orgo.dev   first point that URL at port 18081 (see README), then run this
+#   qm-public off                        back to http://localhost:18081
+#   qm-public                            show the current URL
+set -euo pipefail
+. /usr/local/bin/qm-env
+S=/opt/qm/orgo.env
+touch "$S"; chmod 600 "$S"
+case "${1:-}" in
+  "") echo "QM URL: $(qm_public_url)"; exit 0 ;;
+  off) sed -i '/^QM_PUBLIC_URL=/d' "$S"; echo "QM_PUBLIC_URL=" >> "$S" ;;
+  https://*)
+    url="${1%/}"
+    code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$url/" || true)
+    [ "$code" = "000" ] && { echo "Can't reach $url. Point it at port 18081 first (README: 'Public URL')."; exit 1; }
+    sed -i '/^QM_PUBLIC_URL=/d' "$S"; echo "QM_PUBLIC_URL=$url" >> "$S" ;;
+  *) echo "usage: qm-public https://name.orgo.dev | off"; exit 1 ;;
+esac
+/usr/local/bin/qm-start

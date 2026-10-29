@@ -1,0 +1,29 @@
+#!/bin/bash
+# Build-time only. If the build box has room, pull every image and build the sandbox image so
+# launches are fast; then throw away the throwaway secrets and data. Orgo's build box currently
+# has an 8 GB disk, so this usually skips and the first launch pulls (~3 minutes).
+set -euo pipefail
+. /usr/local/bin/qm-env
+trap 'echo "--- disk at bake exit"; lsblk -o NAME,SIZE 2>/dev/null || true; df -h / || true' EXIT
+resize2fs "$(findmnt -no SOURCE /)" >/dev/null 2>&1 || true
+pgrep -x dockerd >/dev/null || { setsid /usr/local/bin/orgo-dockerd >/var/log/dockerd-bake.log 2>&1 < /dev/null & }
+qm_wait_docker
+docker info --format 'storage: {{.Driver}}'
+cd /opt/qm
+qm_secrets
+/usr/local/bin/qm-configure
+npm exec qm -- check
+free_gb=$(df -BG --output=avail / | tail -1 | tr -dc 0-9)
+if [ "${free_gb:-0}" -lt 14 ]; then
+  echo "only ${free_gb}G free on the build box: skipping image pre-pull; first launch pulls"
+else
+  if ! npm exec qm -- up; then
+    echo "qm up failed at bake; retrying once"; sleep 15
+    npm exec qm -- up || echo "WARN: layer sync failed at bake (launch re-syncs)"
+  fi
+  npm exec qm -- down --purge
+  # Drop build cache only. Never `docker image prune`: QM pulls by digest, so its images look dangling.
+  docker builder prune -af >/dev/null
+fi
+rm -f /opt/qm/.env /opt/qm/.instance-secrets /opt/qm/.opened
+touch /opt/qm/.baked

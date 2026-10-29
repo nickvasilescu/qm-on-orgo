@@ -1,0 +1,32 @@
+#!/bin/bash
+# Turn on email sign-in links (Resend) so teammates can sign in, then restart QM.
+# Prompts for everything; the API key is read silently and stored only in /opt/qm/orgo.env (mode 600).
+#   qm-email        set up or change
+#   qm-email off    turn email sign-in off again
+set -euo pipefail
+. /usr/local/bin/qm-env
+S=/opt/qm/orgo.env
+touch "$S"; chmod 600 "$S"
+setv() { sed -i "/^$1=/d" "$S"; printf '%s=%s\n' "$1" "$2" >> "$S"; }
+
+if [ "${1:-}" = "off" ]; then
+  sed -i '/^RESEND_API_KEY=/d;/^QM_EMAIL_FROM=/d' "$S"
+  exec /usr/local/bin/qm-start
+fi
+
+[[ "$(qm_public_url)" == https://* ]] || echo "Note: email links point at $(qm_public_url). Set a public URL first (qm-public) so links work outside this computer."
+read -rsp "Resend API key (re_...): " key; echo
+[[ "$key" == re_* ]] || { echo "That doesn't look like a Resend key."; exit 1; }
+read -rp "Sender, verified in Resend (e.g. QM <qm@yourdomain.com>): " from
+[ -n "$from" ] || { echo "A sender is required."; exit 1; }
+read -rp "Your admin email (signs in by email): " admin
+read -rp "Let everyone @domain sign in? Enter a domain or leave blank: " domain
+read -rp "Other emails allowed to sign in (comma-separated, optional): " others
+
+setv RESEND_API_KEY "$key"
+setv QM_EMAIL_FROM "$from"
+[ -n "$admin" ] && setv QM_ADMIN_EMAIL "$admin"
+[ -n "$domain" ] && setv QM_ALLOWED_EMAIL_DOMAIN "$domain"
+[ -n "$others" ] && setv QM_ALLOWED_EMAILS "$others"
+unset key
+exec /usr/local/bin/qm-start

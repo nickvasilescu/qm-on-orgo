@@ -1,0 +1,16 @@
+#!/bin/bash
+# Mint a one-time admin sign-in link (valid 5 minutes), print it, and open it in this computer's Chrome.
+# Paste the printed link (all of it, including #token=...) into any browser when QM has a public URL.
+. /usr/local/bin/qm-env
+cd /opt/qm
+for _ in $(seq 1 90); do qm_http_up http://localhost:18081/ && break; sleep 2; done
+url=$(npm exec --silent qm -- admin-login --email admin@qm.local 2>/dev/null | grep -E '^https?://' | tail -1)
+[ -n "$url" ] || { echo "admin-login failed; is QM up? (npm exec qm -- status)"; exit 1; }
+echo "Admin sign-in link (one-time, 5 minutes):"
+echo "$url"
+disp=":$(ls /tmp/.X11-unix 2>/dev/null | head -1 | tr -dc 0-9)"
+if [ "$disp" != ":" ]; then
+  DISPLAY="$disp" setsid /usr/local/bin/google-chrome --no-sandbox --no-first-run --no-default-browser-check \
+    --start-maximized "$url" >/dev/null 2>&1 < /dev/null 9>&- &
+  echo "(also opened in this computer's Chrome)"
+fi
