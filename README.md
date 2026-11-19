@@ -5,7 +5,7 @@ Run [QM](https://github.com/yc-software/qm), Y Combinator's open-source multipla
 > QM's Docker target is designed as a single-host deployment. This template makes it one launch. For a large team, run QM's own Fly or AWS deployment.
 
 
-> Independent community packaging of QM. Not affiliated with or endorsed by Y Combinator. See [Disclaimer](#disclaimer).
+> Community packaging of QM. Not an official Y Combinator project. See [Disclaimer](#disclaimer).
 ## One command: your own QM at your own URL
 
 Once the template is in your account (step 1 below), this launches a dedicated computer, gives it `https://<name>.orgo.dev`, switches QM to that URL, and prints your admin sign-in link:
@@ -154,9 +154,8 @@ Report vulnerabilities in this packaging privately: see [SECURITY.md](SECURITY.m
 
 ## Disclaimer
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or sponsored by Y Combinator
-or Orgo's other partners. "Y Combinator", "YC" and "QM" are names of their owners, used here only to say what this
-template deploys.
+This is community packaging, not an official Y Combinator project, and Y Combinator does not endorse or support
+it. "Y Combinator", "YC" and "QM" are names of their owners, used here only to say what this template deploys.
 
 This repo contains only deployment scripts. It does not include or redistribute QM's source code: the template
 installs the pinned `@yc-software/qm` package from npm at build time, under QM's own MIT license.
