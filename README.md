@@ -4,6 +4,8 @@ Run [QM](https://github.com/yc-software/qm), Y Combinator's open-source multipla
 
 > QM's Docker target is designed as a single-host deployment. This template makes it one launch. For a large team, run QM's own Fly or AWS deployment.
 
+
+> Community packaging of QM. Not an official Y Combinator project. See [Disclaimer](#disclaimer).
 ## One command: your own QM at your own URL
 
 Once the template is in your account (step 1 below), this launches a dedicated computer, gives it `https://<name>.orgo.dev`, switches QM to that URL, and prints your admin sign-in link:
@@ -147,6 +149,20 @@ To bump the pinned QM version, change `QM_VERSION` in `build.py` and bump `VERSI
 - Only port 18081 is exposed, and only in public-URL mode. Sandboxes reach core over Docker's internal network.
 - On the local Docker backend, QM can't enforce egress rules for sandboxes. Its admin page says so.
 - The one-time admin link is a credential. Don't paste it anywhere public.
+
+Report vulnerabilities in this packaging privately: see [SECURITY.md](SECURITY.md).
+
+## Disclaimer
+
+This is community packaging, not an official Y Combinator project, and Y Combinator does not endorse or support
+it. "Y Combinator", "YC" and "QM" are names of their owners, used here only to say what this template deploys.
+
+This repo contains only deployment scripts. It does not include or redistribute QM's source code: the template
+installs the pinned `@yc-software/qm` package from npm at build time, under QM's own MIT license.
+
+It is provided "as is", without warranty of any kind, under the MIT license. You are responsible for your API
+keys and costs, for who you let sign in, for what the agents do with the credentials you give them, and for
+complying with your model providers' terms and applicable law.
 
 ## License
 
